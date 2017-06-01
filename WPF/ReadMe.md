@@ -1,146 +1,142 @@
-# About Surface Dial mounting method
+# Surface Dial WPF Implement
+WPF にSurface Dial を対応させるにはいくつかの手順が必要である。基本的な方法は、Win32 アプリケーションのインターフェースを使ってCOMオブジェクトを作成し、そこからRadialContoller のオブジェクトを使うという形。
 
-this target applicaion is implemented in proprietary application framework Triglav. 
-Therefore, incorporating Surface Dial corresponds to Surface Dial to Triglav framework, and it is implemented in application.
+## Windows Runtime の参照
 
-
-# Constitution
-
-The incorporation of Surface Dial into this target application consists of the following four parts.
-
-## Triglavwinrt.dll
-
-It is a DLL that implements the WinRT API used in Surface Dial with the C interface. 
-So we implemented a C interface DLL for calling Surface Dial's WinRT.
-
-## Window (Triglav)
-
-Set the Surface Dial menu for the window. This target applicaion has multiple windows because it is a classic Windows application. 
-On the other hand, Surface Dial sets a menu for one window. In order to operate as one Surface Dial menu throughout the application, 
-we need to deal with this structure well.Triglav limits the type of windows that display application-specific Surface Dial menus.
-
-## Application (Triglav)
-
-We added the function to set the Surface Dial menu in the application class and implement the function to receive events from the Surface Dial.
-
-## Application (this target applicaion)
-
-When launching the application, set the Surface Dial menu in the application class. Upon receiving an event from Surface Dial, it receives an event in the application class and performs actions on the canvas according to the parameter of that event type.
-
-
-# Implementation
-
-## Triglavwinrt.dll
-
-Please look at the project in the attached triglavwinrt folder. A complete project is included.
-Basically there are the WinRT API used in Surface Dial with the C interface. 
-
-## Window (Triglav)
-
-The extension to Triglav 's window consists of two parts.
-
-### Calling DLL
-
-These two classes are implementations for calling triglavwinrt.dll. Instead of a simple DLL wrapper, it has an interface close to the original Surface Dial WinRT.
-
-* PWLegacyWindowRuntimeModuleWin
-* PWLegacyDialModuleWin
-
-### Window implementation
-
-PWLegacyWindowWin is the most important implementation part. 
-I will extract only the source code related to Surface Dial.
-
-
-#### initialization is executed.
-```
-if ( PWLegacyWindowRuntimeModuleWin::IsAvailable() ) {
-	PWLegacyWindowRuntimeModuleWin::Initalize();
-	PWLegacyDialModule::Initialize();
-}
-```
-
-#### Execute termination processing when the application terminates
-```
-// サーフェスダイヤルの終了
-if ( PWLegacyWindowRuntimeModuleWin::IsAvailable() ) {
-	PWLegacyWindowWin::SetDialMenu( PWDialMenu::DefaultMenu );
-	PWLegacyDialModule::Terminate();
-	PWLegacyWindowRuntimeModuleWin::Terminate();
-}
-```
-
-#### creating a window, 
-Call ApplyDialMenu on the window and set the Surface Dial menu set for the application to the window.
-```
-PWLegacyWindowWin::ApplyDialMenu( windowObject );
-```
-
-#### When the window receives WM_SETFOCUS
-It calls ApplyDialMenuSelection for that window and sets the Surface Dial menu selected by the application in the focus window.
+WPFでWindows Runtime を扱うために、まずはWindows Runtime の参照が必要となる。
 
 ```
-if( message == WM_SETFOCUS ) {
-    PWLegacyWindowWin::ApplyDialMenuSelection( windowObject );
-}
+<Reference Include="Windows.winmd">
+    <HintPath>$(MSBuildProgramFiles32)\Windows Kits\10\UnionMetadata\Windows.winmd</HintPath>
+</Reference>
 ```
 
-Check the PWLegacyWindowWin.cpp for the above functions and other implementations. There is an excerpt part of the code relating to Surface Dial.
+## Comオブジェクト取得のためのインターフェース作成
+続けて、Radial Contoller と RadialControllerConfigration インスタンスを取得するための、
+Comオブジェクトを取得するためのインターフェースを準備する
+ここはMicrosoft のサンプルが参考になる。
+<https://github.com/Microsoft/Windows-classic-samples/tree/master/Samples/RadialController>
 
-## Application (Triglav)
+このインターフェースは再利用可能なので、1度作っておけばあとは楽になります。
 
-The Triglav application class provides callbacks to receive functions and events that set the Surface Dial menu.
-
-PWApplication.h.
 ```
-//! @brief アプリケーションクラス
-class PWApplication
+IDesktopRadialController.cs
+[Guid("1b0535c9-57ad-45c1-9d79-ad5c34360513")]
+[InterfaceType(ComInterfaceType.InterfaceIsIInspectable)]
+public interface IDesktopRadialController
 {
-public:
-    //!	サーフェスダイヤルメニューの設定
-    void	SetDialMenu( const PWDialMenu& dialMenu );
-
-    //! サーフェスダイヤルメニューからのコールバック
-    void	EventDialMenu( PWLegacyApplicationEventDialMenuParameterObject dialMenuParameterObject );
-};
+    RadialController CreateForWindow(IntPtr hWnd, [In] ref Guid iid);
+}
 ```
-
-The implementation of PWApplication::SetDialMenu is simply a call to PWLegacyWindowWin::SetDialMenu. PWApplication::EventDialMenu is called by PWLegacyWindowWin which received the event of Surface Dial, it converts the PWLegacyApplicationEventDialMenuParameterObject created by PWLegacyWindowWin into PWDialMenuEventParameter and sends the event.
-
-PWDialMenu represents the menu to set to Surface Dial.
-
-
-## Application (this target applicaion)
-
-this target applicaion When starting up, create PWDialMenu and call PWApplication::SetDialMenu to set the menu. In this target applicaion, the content of the menu is always decided, so setting up the menu is the only one here.
-
 ```
-// サーフェスダイヤルメニューの設定.
-std::vector<PWDialMenuItem> items;
-URDialMenu::InitializeMenu(items);
-SetDialMenu( PWDialMenu( items ) );
-```
-
-Also, at this time, make setting to connect the event of the application class, accept the event like OperationDialMenu and process it.
-
-```
-Bool OperationDialMenu( PWEvent& rEvent )
+[Guid("787cdaac-3186-476d-87e4-b9374a7b9970")]
+[InterfaceType(ComInterfaceType.InterfaceIsIInspectable)]
+public interface IDesktopRadialControllerConfiguration
 {
-    Bool result = FALSE;
-    EventKind eventKind = rEvent.GetEventKind();
-    if (eventKind == kEventKindDialMenuClick ) {
-        PWDialMenuEventParameter parameter(rEvent);
-        UInt32 menuID = parameter.GetMenuID();
-        // サーフェスダイヤルがクリックされた. 選択状態のメニューはmenuIDのものである.
-    } else if (eventKind == kEventKindDialMenuRotate) {
-        PWDialMenuEventParameter parameter(rEvent);
-        UInt32 menuID = parameter.GetMenuID();
-        double rotation = parameter.Rotation();
-        // サーフェスダイヤルを回転した. 選択状態のメニューはmenuIDのものであり, 回転角度はrotation.
-    } else {
-        // ...
+    RadialControllerConfiguration GetForWindow(IntPtr hWnd, [In] ref Guid iid);
+}
+```
+
+## アプリからのインターフェースを経由したWindows Rutimeの利用
+
+利用時には初めに、インターフェース経由でインスタンスを取得し、APIを利用。
+
+DesktopRadialController.cs
+```
+public static class DesktopRadialController
+{
+    public static RadialController Create(IntPtr hWnd)
+    {
+        var controller =
+            (IDesktopRadialController)WindowsRuntimeMarshal.GetActivationFactory(typeof(RadialController));
+        var iid = typeof(RadialController).GetInterface("IRadialController").GUID;
+        return controller.CreateForWindow(hWnd, ref iid);
     }
-    return TRUE;
 }
 ```
-In this way we will receive the Surface Dial event and its parameters in the application part and implement the code to operate on the canvas.
+```
+public static class DesktopRadialControllerConfiguration
+{
+    public static RadialControllerConfiguration Create(IntPtr hWnd)
+    {
+        var configration = (IDesktopRadialControllerConfiguration)WindowsRuntimeMarshal.
+            GetActivationFactory(typeof(RadialControllerConfiguration));
+        var iid = typeof(RadialControllerConfiguration).GetInterface("IRadialControllerConfiguration").GUID;
+        return configration.GetForWindow(hWnd, ref iid);
+    }
+}
+```
+
+## Dial の機能の利用
+
+実際にDaial の機能を使う方法は、UWPでの実装と大きくは変わらない。
+初めに標準メニューに対するカスタマイズをする
+
+ウィンドウ ハンドルから RadialController と RadialControllerConfiguration のインスタンス取得
+```
+var controller = DesktopRadialController.Create(source.Handle);
+var configuration = DesktopRadialControllerConfiguration.Create(source.Handle);
+
+```
+
+既定メニューのうちアプリで使いたいものを選んで設定
+```
+configuration.SetDefaultMenuItems(new[] { RadialControllerSystemMenuItemKind.Volume, });
+
+// アプリ独自メニューを追加
+controller.Menu.Items.Add(
+    RadialControllerMenuItem.CreateFromKnownIcon(
+        "Tab", 
+        RadialControllerMenuKnownIcon.Scroll
+    )
+);
+```
+
+メニュー項目をカスタマイズする場合のアイコンの処理
+* リソースに置かれた画像ファイルからアイコンを取得する
+* デフォルトのアイコンを使う場合: CreateFromKnownIcon()
+* オリジナルの画像ファイルを使う場合: CreateFromIcon() , ソースは IRandomAccessStreamReference
+* 以下の実装には IAsyncOeration のために System.Runtime.WindowsRuntime.dllの参照が必要
+
+```
+async void InitializeController()
+{
+   var controller = this.CreateRadialController();// 中略
+   const string iconUri = "pack://application:,,,/SampleAssembly;Component/assets/Item0.png";
+   var menuItem = await CreateMenuItem("Sample", new Uri(iconUri, UriKind.Absolute));
+
+   controller.Menu.Items.Add(menuItem);
+}
+```
+
+
+```
+static async Task<RadialControllerMenuItem> CreateMenuItem(string displayText, Uri iconUri)
+{
+    // Get Stream from IconURL
+    var resourceInfo = Application.GetResourceStream(iconUri);
+    if (resourceInfo == null) throw new ArgumentException("Resource not found.", nameof(iconUri));
+
+    using (var stream = resourceInfo.Stream)
+    {
+        // Get Byte Allay from Strream
+        var array = new byte[stream.Length];
+        stream.Read(array, 0, array.Length);
+
+        using (var randomAccessStream = new InMemoryRandomAccessStream())
+        {
+            // Wrote byte allay to UWP Stream
+            await randomAccessStream.WriteAsync(array.AsBuffer());
+            return RadialControllerMenuItem.CreateFromIcon(
+                displayText, 
+                RandomAccessStreamReference.CreateFromStream(randomAccessStream));
+        }
+    }
+}
+```
+## 続けてイベントの取得とその実装。
+
+Dial の回転イベントを定義 (args.RotationDeltaInDegrees で回転角度を取ったりする)
+```
+controller.RotationChanged += (sender, args) => Action(args.RotationDeltaInDegrees);
+```
