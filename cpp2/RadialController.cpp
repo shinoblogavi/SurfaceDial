@@ -12,6 +12,8 @@
 #define CLASSNAME L"Radial Device Controller"
 #define BUFFER_SIZE 2000
 
+using namespace Sample;
+
 LRESULT CALLBACK WindowProc(
     __in HWND hWindow,
     __in UINT uMsg,
