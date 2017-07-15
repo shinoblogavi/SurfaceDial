@@ -1,0 +1,12 @@
+import "oaidl.idl";
+import "ocidl.idl";
+
+import "windows.ui.input.idl";
+
+namespace Sample
+{
+	declare
+	{
+		interface Windows.Foundation.Collections.IVector<Windows.UI.Input.RadialControllerSystemMenuItemKind>;
+	}
+}

@@ -20,6 +20,7 @@
 #include <wrl\client.h>
 #include <winstring.h>
 #include "vector.h"
+#include "Vector_h.h"
 
 #define RETURN_IF_FAILED(hr) { if(FAILED(hr)) return hr; }
 
@@ -27,6 +28,7 @@ using namespace ABI::Windows::UI::Input;
 using namespace ABI::Windows::Foundation;
 using namespace Microsoft::WRL;
 using namespace Microsoft::WRL::Wrappers;
+using namespace Sample;
 
 DeviceListener::DeviceListener(HANDLE console)
 {
