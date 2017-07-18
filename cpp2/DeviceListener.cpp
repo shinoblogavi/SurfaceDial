@@ -140,8 +140,6 @@ HRESULT DeviceListener::PopulateMenuItems()
 
 	PrintMsg(L"Got Menu \n", FOREGROUND_BLUE);
 
-	SetDefaultMenyItem();
-
     RETURN_IF_FAILED(Windows::Foundation::GetActivationFactory(
         HStringReference(RuntimeClass_Windows_UI_Input_RadialControllerMenuItem).Get(),
         &_menuItemStatics));
@@ -156,7 +154,7 @@ HRESULT DeviceListener::PopulateMenuItems()
 
     RETURN_IF_FAILED(AddMenuItemFromSystemFont());
 
-	//RemoveMenuItem();
+    SetDefaultMenyItem();
 
     return S_OK;
 }
